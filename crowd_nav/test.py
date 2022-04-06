@@ -87,7 +87,7 @@ def main():
     policy.set_env(env)
     robot.print_info()
     if args.visualize:
-        ob = env.reset(args.phase, args.test_case)
+        ob = env.reset(phase=args.phase, test_case=args.test_case)
         done = False
         last_pos = np.array(robot.get_position())
         while not done:
@@ -97,9 +97,9 @@ def main():
             logging.debug('Speed: %.2f', np.linalg.norm(current_pos - last_pos) / robot.time_step)
             last_pos = current_pos
         if args.traj:
-            env.render('traj', args.video_file)
+            env.render(mode='traj', output_file=args.video_file)
         else:
-            env.render('video', args.video_file)
+            env.render(mode='video', output_file=args.video_file)
 
         logging.info('It takes %.2f seconds to finish. Final status is %s', env.global_time, info)
         if robot.visible and info == 'reach goal':

@@ -33,7 +33,7 @@ class Explorer(object):
         collision_cases = []
         timeout_cases = []
         for i in range(k):
-            ob = self.env.reset(phase)
+            ob = self.env.reset(phase=phase)
             done = False
             states = []
             actions = []
