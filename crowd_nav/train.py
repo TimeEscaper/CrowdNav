@@ -73,10 +73,11 @@ def main():
     # configure environment
     env_config = configparser.RawConfigParser()
     env_config.read(args.env_config)
-    env = gym.make('CrowdSim-v0')
+    env = gym.make('PyMiniSimEnv-v0')
     env.configure(env_config)
     robot = Robot(env_config, 'robot')
     env.set_robot(robot)
+    env.reset()
 
     # read training parameters
     if args.train_config is None:
