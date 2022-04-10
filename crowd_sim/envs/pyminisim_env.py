@@ -20,7 +20,7 @@ from crowd_sim.envs.utils.info import *
 class PyMiniSimEnv(gym.Env):
     _SIM_DT = 0.01
 
-    def __init__(self, render: bool = True):
+    def __init__(self, render: bool = False):
         super(PyMiniSimEnv, self).__init__()
 
         self._render = render
