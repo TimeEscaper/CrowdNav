@@ -20,7 +20,7 @@ from crowd_sim.envs.utils.info import *
 class PyMiniSimEnv(gym.Env):
     _SIM_DT = 0.01
 
-    def __init__(self, render: bool = False):
+    def __init__(self, render: bool = True):
         super(PyMiniSimEnv, self).__init__()
 
         self._render = render
@@ -92,6 +92,9 @@ class PyMiniSimEnv(gym.Env):
                        0,
                        0,
                        self._sim.current_state.world.robot.pose[2])
+        self.global_time = 0
+        self.robot.time_step = self.time_step
+        self.robot.policy.time_step = self.time_step
         return self._get_observation()
 
     def step(self, action, update=True) -> Tuple[ObsType, float, bool, dict]:
@@ -103,7 +106,8 @@ class PyMiniSimEnv(gym.Env):
         while (not collision) and elapsed_time < self.time_step:
             self._sim.step(control)
             elapsed_time += PyMiniSimEnv._SIM_DT
-            if self._sim.current_state.world.robot_to_pedestrians_collisions is not None:
+            collisions_info = self._sim.current_state.world.robot_to_pedestrians_collisions
+            if collisions_info is not None and len(collisions_info) > 0:
                 collision = True
             if self._render:
                 self._renderer.render()

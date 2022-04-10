@@ -25,13 +25,17 @@ def main():
     parser.add_argument('--resume', default=False, action='store_true')
     parser.add_argument('--gpu', default=False, action='store_true')
     parser.add_argument('--debug', default=False, action='store_true')
+    parser.add_argument('--overwrite', default=False, action='store_true')
     args = parser.parse_args()
 
     # configure paths
     make_new_dir = True
     if os.path.exists(args.output_dir):
-        key = input('Output directory already exists! Overwrite the folder? (y/n)')
-        if key == 'y' and not args.resume:
+        overwrite = args.overwrite
+        if not overwrite:
+            key = input('Output directory already exists! Overwrite the folder? (y/n)')
+            overwrite = key == 'y'
+        if overwrite and not args.resume:
             shutil.rmtree(args.output_dir)
         else:
             make_new_dir = False
@@ -74,10 +78,11 @@ def main():
     env_config = configparser.RawConfigParser()
     env_config.read(args.env_config)
     env = gym.make('PyMiniSimEnv-v0')
+    # env = gym.make('CrowdSim-v0')
     env.configure(env_config)
     robot = Robot(env_config, 'robot')
     env.set_robot(robot)
-    env.reset()
+#    env.reset()
 
     # read training parameters
     if args.train_config is None:
