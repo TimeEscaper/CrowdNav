@@ -44,6 +44,10 @@ class PyMiniSimEnv(gym.Env):
 
         self._current_goal: Optional[np.ndarray] = None
 
+        self._parallel_sim: Simulation = None
+        self._pedestrians_traj_with_robot: List[np.ndarray] = []
+        self._pedestrians_traj_no_robot: List[np.ndarray] = []
+
     def configure(self, config):
         self.config = config
         self.time_limit = config.getint('env', 'time_limit')
@@ -84,6 +88,8 @@ class PyMiniSimEnv(gym.Env):
 
     def reset(self, phase='test', test_case=None) -> Union[ObsType, tuple[ObsType, dict]]:
         self._init_sim()
+        self._pedestrians_traj_with_robot.append(self._sim.current_state.world.pedestrians.poses[:, :2])
+        self._pedestrians_traj_no_robot.append(self._parallel_sim.current_state.world.pedestrians.poses[:, :2])
         self._sample_goal()
         self.robot.set(self._sim.current_state.world.robot.pose[0],
                        self._sim.current_state.world.robot.pose[1],
@@ -99,18 +105,22 @@ class PyMiniSimEnv(gym.Env):
 
     def step(self, action, update=True) -> Tuple[ObsType, float, bool, dict]:
         backup_state = self._sim.current_state.world
+        backup_parallel_state = self._parallel_sim.current_state.world
 
         control = np.array([action[0], action[1], 0.])
         elapsed_time = 0.
         collision = False
         while (not collision) and elapsed_time < self.time_step:
             self._sim.step(control)
+            self._parallel_sim.step()
             elapsed_time += PyMiniSimEnv._SIM_DT
             collisions_info = self._sim.current_state.world.robot_to_pedestrians_collisions
             if collisions_info is not None and len(collisions_info) > 0:
                 collision = True
             if self._render:
                 self._renderer.render()
+        self._pedestrians_traj_with_robot.append(self._sim.current_state.world.pedestrians.poses[:, :2])
+        self._pedestrians_traj_no_robot.append(self._parallel_sim.current_state.world.pedestrians.poses[:, :2])
 
         reaching_goal = np.linalg.norm(
             self._sim.current_state.world.robot.pose[:2] - self._current_goal) < ROBOT_RADIUS
@@ -127,7 +137,7 @@ class PyMiniSimEnv(gym.Env):
             done = True
             info = Collision()
         elif reaching_goal:
-            reward = self.success_reward
+            reward = self.success_reward + self._calculate_social_disturbance()
             done = True
             info = ReachGoal()
         elif dmin < self.discomfort_dist:
@@ -145,6 +155,7 @@ class PyMiniSimEnv(gym.Env):
 
         if not update:
             self._sim.reset_to_state(backup_state)
+            self._parallel_sim.reset_to_state(backup_parallel_state)
         else:
             self.robot.step(action)
             self.global_time += self.time_step
@@ -155,21 +166,26 @@ class PyMiniSimEnv(gym.Env):
         pass
 
     def _init_sim(self):
-        tracker = RandomWaypointTracker(world_size=(7.0, 7.0))
-        pedestrians_model = HeadedSocialForceModelPolicy(n_pedestrians=self.human_num,
-                                                         waypoint_tracker=tracker,
-                                                         pedestrian_linear_velocity_magnitude=1.5)
-
-        robot_model = SimpleHolonomicRobotModel(initial_pose=np.array([2.0, 3.85, 0.]),
-                                                initial_control=np.array([0., 0., 0.]))
-        self._sim = Simulation(robot_model=robot_model,
-                               pedestrians_model=pedestrians_model,
-                               sensors=[],
-                               sim_dt=PyMiniSimEnv._SIM_DT)
+        self._sim = self._create_sim()
         if self._render:
             self._renderer = Renderer(simulation=self._sim,
                                       resolution=80.0,
                                       screen_size=(500, 500))
+        self._parallel_sim = self._create_sim()
+        self._parallel_sim.reset_to_state(self._sim.current_state.world)
+        self._parallel_sim.set_robot_enabled(False)
+
+    def _create_sim(self) -> Simulation:
+        tracker = RandomWaypointTracker(world_size=(7.0, 7.0))
+        pedestrians_model = HeadedSocialForceModelPolicy(n_pedestrians=self.human_num,
+                                                         waypoint_tracker=tracker,
+                                                         pedestrian_linear_velocity_magnitude=1.5)
+        robot_model = SimpleHolonomicRobotModel(initial_pose=np.array([2.0, 3.85, 0.]),
+                                                initial_control=np.array([0., 0., 0.]))
+        return Simulation(robot_model=robot_model,
+                          pedestrians_model=pedestrians_model,
+                          sensors=[],
+                          sim_dt=PyMiniSimEnv._SIM_DT)
 
     def _get_observation(self):
         assert self._sim is not None
@@ -192,3 +208,10 @@ class PyMiniSimEnv(gym.Env):
                 self._renderer.draw("goal", CircleDrawing(self._current_goal, 0.05, (255, 0, 0)))
             return
         raise RuntimeError("Failed to sample waypoint")
+
+    def _calculate_social_disturbance(self) -> float:
+        traj_with_robot = np.array(self._pedestrians_traj_with_robot)
+        traj_no_robot = np.array(self._pedestrians_traj_no_robot)
+        social_disturbance = np.mean((traj_with_robot - traj_no_robot) ** 2)
+        print(f"Social disurbance: {social_disturbance}")
+        return -10. * social_disturbance
