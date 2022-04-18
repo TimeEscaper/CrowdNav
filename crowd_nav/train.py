@@ -4,6 +4,8 @@ import argparse
 import configparser
 import os
 import shutil
+
+import numpy as np
 import torch
 import gym
 import git
@@ -144,6 +146,7 @@ def main():
     robot.set_policy(policy)
     robot.print_info()
     trainer.set_learning_rate(rl_learning_rate)
+    best_reward = -np.inf
     # fill the memory pool with some RL experience
     if args.resume:
         robot.policy.set_epsilon(epsilon_end)
@@ -165,14 +168,18 @@ def main():
             explorer.run_k_episodes(env.case_size['val'], 'val', episode=episode)
 
         # sample k episodes into memory and optimize over the generated memory
-        explorer.run_k_episodes(sample_episodes, 'train', update_memory=True, episode=episode)
+        cumulative_reward = explorer.run_k_episodes(sample_episodes, 'train', update_memory=True, episode=episode)
         trainer.optimize_batch(train_batches)
         episode += 1
 
         if episode % target_update_interval == 0:
             explorer.update_target_model(model)
 
-        if episode != 0 and episode % checkpoint_interval == 0:
+        # if episode != 0 and episode % checkpoint_interval == 0:
+        #     torch.save(model.state_dict(), rl_weight_file)
+
+        if cumulative_reward > best_reward:
+            best_reward = cumulative_reward
             torch.save(model.state_dict(), rl_weight_file)
 
     # final test
