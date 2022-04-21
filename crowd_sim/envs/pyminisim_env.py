@@ -110,9 +110,16 @@ class PyMiniSimEnv(gym.Env):
         control = np.array([action[0], action[1], 0.])
         elapsed_time = 0.
         collision = False
+        numerical_fail = False
         while (not collision) and elapsed_time < self.time_step:
-            self._sim.step(control)
-            self._parallel_sim.step()
+            try:
+                self._sim.step(control)
+                self._parallel_sim.step()
+            except Exception as e:
+                print(e)
+                print(self._sim.current_state.world.pedestrians)
+                print(self._parallel_sim.current_state.world.pedestrians)
+                numerical_fail = True
             elapsed_time += PyMiniSimEnv._SIM_DT
             collisions_info = self._sim.current_state.world.robot_to_pedestrians_collisions
             if collisions_info is not None and len(collisions_info) > 0:
@@ -128,7 +135,8 @@ class PyMiniSimEnv(gym.Env):
         dmin = np.min(np.linalg.norm(self._sim.current_state.world.robot.pose[:2] -
                                      self._sim.current_state.world.pedestrians.poses[:, :2]))
 
-        if self.global_time >= self.time_limit - 1:
+        if self.global_time >= self.time_limit - 1 or numerical_fail:
+            # TODO: Fix numerical failures
             reward = 0
             done = True
             info = Timeout()
