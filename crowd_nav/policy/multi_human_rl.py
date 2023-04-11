@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from crowd_sim.envs.utils.action import ActionRot, ActionXY
+from crowd_sim.envs.utils.action import ActionRot, ActionXY, ActionPoint
 from crowd_nav.policy.cadrl import CADRL
 
 
@@ -20,7 +20,14 @@ class MultiHumanRL(CADRL):
             raise AttributeError('Epsilon attribute has to be set in training phase')
 
         if self.reach_destination(state):
-            return ActionXY(0, 0) if self.kinematics == 'holonomic' else ActionRot(0, 0)
+            if self.kinematics == 'holonomic':
+                return ActionXY(0, 0)
+            elif self.kinematics == "subgoal":
+                return ActionPoint(px=state.px,
+                                   py=state.py,
+                                   theta=state.theta)
+            else:
+                return ActionRot(0, 0)
         if self.action_space is None:
             self.build_action_space(state.self_state.v_pref)
 

@@ -6,12 +6,12 @@ import numpy as np
 import gym
 from gym.core import ObsType, ActType
 
-from pyminisim.core import Simulation, WorldState
-from pyminisim.robot import SimpleHolonomicRobotModel
-from pyminisim.pedestrians import HeadedSocialForceModelPolicy, RandomWaypointTracker
-from pyminisim.sensors import PedestrianDetectorNoise, PedestrianDetector
-from pyminisim.visual import Renderer, CircleDrawing
-from pyminisim.core import ROBOT_RADIUS, PEDESTRIAN_RADIUS
+from pms.core import Simulation, WorldState
+from pms.robot import SimpleHolonomicRobotModel
+from pms.pedestrians import HeadedSocialForceModelPolicy, RandomWaypointTracker
+from pms.sensors import PedestrianDetectorNoise, PedestrianDetector
+from pms.visual import Renderer, CircleDrawing
+from pms.core import ROBOT_RADIUS, PEDESTRIAN_RADIUS
 
 from crowd_sim.envs.utils.state import ObservableState, FullState
 from crowd_sim.envs.utils.info import *

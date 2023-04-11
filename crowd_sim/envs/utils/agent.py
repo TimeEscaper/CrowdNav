@@ -3,7 +3,7 @@ from numpy.linalg import norm
 import abc
 import logging
 from crowd_sim.envs.policy.policy_factory import policy_factory
-from crowd_sim.envs.utils.action import ActionXY, ActionRot
+from crowd_sim.envs.utils.action import ActionXY, ActionRot, ActionPoint
 from crowd_sim.envs.utils.state import ObservableState, FullState
 
 
@@ -67,6 +67,13 @@ class Agent(object):
         if self.kinematics == 'holonomic':
             next_vx = action.vx
             next_vy = action.vy
+        elif self.kinematics == "subgoal":
+            if action.vx is not None:
+                next_vx = action.vx
+                next_vy = action.vy
+            else:
+                next_vx = 0.
+                next_vy = 0.
         else:
             next_theta = self.theta + action.r
             next_vx = action.v * np.cos(next_theta)
@@ -104,6 +111,8 @@ class Agent(object):
     def check_validity(self, action):
         if self.kinematics == 'holonomic':
             assert isinstance(action, ActionXY)
+        elif self.kinematics == "subgoal":
+            assert isinstance(action, ActionPoint)
         else:
             assert isinstance(action, ActionRot)
 
@@ -112,6 +121,9 @@ class Agent(object):
         if self.kinematics == 'holonomic':
             px = self.px + action.vx * delta_t
             py = self.py + action.vy * delta_t
+        elif self.kinematics == "subgoal":
+            px = action.px
+            py = action.py
         else:
             theta = self.theta + action.r
             px = self.px + np.cos(theta) * action.v * delta_t
@@ -127,6 +139,10 @@ class Agent(object):
         pos = self.compute_position(action, self.time_step)
         self.px, self.py = pos
         if self.kinematics == 'holonomic':
+            self.vx = action.vx
+            self.vy = action.vy
+        elif self.kinematics == "subgoal":
+            self.theta = action.theta
             self.vx = action.vx
             self.vy = action.vy
         else:
