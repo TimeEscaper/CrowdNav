@@ -20,7 +20,7 @@ def main():
     parser = argparse.ArgumentParser('Parse configuration file')
     parser.add_argument('--env_config', type=str, default='configs/env.config')
     parser.add_argument('--policy', type=str, default='cadrl')
-    parser.add_argument('--policy_config', type=str, default='configs/policy.config')
+    parser.add_argument('--policy_config', type=str, default='configs/policy_subgoal.config')
     parser.add_argument('--train_config', type=str, default='configs/train.config')
     parser.add_argument('--output_dir', type=str, default='data/output')
     parser.add_argument('--weights', type=str)
@@ -79,7 +79,7 @@ def main():
     # configure environment
     env_config = configparser.RawConfigParser()
     env_config.read(args.env_config)
-    env = gym.make('PyMiniSimEnv-v0')
+    env = gym.make('SocNav-v0')
     # env = gym.make('CrowdSim-v0')
     env.configure(env_config)
     robot = Robot(env_config, 'robot')
@@ -165,6 +165,7 @@ def main():
 
         # evaluate the model
         if episode % evaluation_interval == 0:
+            # explorer.run_k_episodes(env.case_size['val'], 'val', episode=episode)
             explorer.run_k_episodes(env.case_size['val'], 'val', episode=episode)
 
         # sample k episodes into memory and optimize over the generated memory

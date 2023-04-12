@@ -4,8 +4,8 @@ import numpy as np
 from typing import Optional, Union, Dict
 from stable_baselines3.common.vec_env import SubprocVecEnv
 
-from lib.envs.curriculum import AbstractCurriculum
-from lib.utils import AbstractLogger
+from crowd_sim.envs.pms.envs.curriculum import AbstractCurriculum
+from crowd_sim.envs.pms.utils.loggers import AbstractLogger
 
 
 class EvalEnvWrapper(gym.Env):

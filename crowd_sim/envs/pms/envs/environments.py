@@ -24,6 +24,7 @@ from crowd_sim.envs.pms.predictors.tracker import PedestrianTracker, CovarianceN
 from crowd_sim.envs.utils.action import ActionPoint
 from crowd_sim.envs.utils.info import Collision, Timeout, ReachGoal, Danger, Nothing
 from crowd_sim.envs.utils.state import ObservableState
+from crowd_sim.envs.pms.utils.math import transition_to_subgoal_polar, subgoal_to_global
 
 
 class AbstractEnvFactory(ABC):
@@ -351,7 +352,7 @@ class SocialNavEnv(gym.Env):
                     goal_reach_threshold=0.0,
                     max_steps=20,
                     subgoal_reach_threshold=0.1,
-                    max_subgoal_steps=0.1
+                    max_subgoal_steps=25
                 ),
                 n_eval_episodes=10
             ),
@@ -379,6 +380,11 @@ class SocialNavEnv(gym.Env):
         self.discomfort_dist: Optional[float] = None
         self.discomfort_penalty_factor: Optional[float] = None
 
+        self.case_size = {
+            'val': 10,
+            'test': 10
+        }
+
     def configure(self, config):
         self.success_reward = config.getfloat('reward', 'success_reward')
         self.collision_penalty = config.getfloat('reward', 'collision_penalty')
@@ -404,10 +410,12 @@ class SocialNavEnv(gym.Env):
                        ROBOT_RADIUS)  # TODO: Check with v_pref
         self.robot.time_step = 0.1  # TODO: Should we use this value for subgoals?
         self.robot.policy.time_step = 0.1
+        self.global_time = 0.
+        self.time_limit = (self._sim_wrap._max_steps + 1) * self.robot.time_step
         return self._get_observation()
 
     def step(self, action: ActionPoint, update=True):
-        action = np.array([action.px, action.py])
+        action = np.array([action.s_lin, action.s_ang]) if not action.is_empty else None
         prev_pose = self._sim_wrap.sim_state.world.robot.pose
         collision, truncated, success, separation = self._sim_wrap.step(action)
 
@@ -433,16 +441,48 @@ class SocialNavEnv(gym.Env):
             info = Nothing()
 
         new_pose = self._sim_wrap.sim_state.world.robot.pose
-        subgoal_action = subgoa
+        new_vel = self._sim_wrap.sim_state.world.robot.velocity
+        subgoal_action = transition_to_subgoal_polar(prev_pose, new_pose)
+        action = ActionPoint(s_lin=subgoal_action[0],
+                             s_ang=subgoal_action[1],
+                             px=new_pose[0],
+                             py=new_pose[1],
+                             theta=new_pose[2],
+                             vx=new_vel[0],
+                             vy=new_vel[1],
+                             omega=new_vel[2])
 
         obs = self._get_observation()
-
-        action = ActionPoint(s_)
 
         self.robot.step(action)
         self.global_time += self.time_step
 
         return obs, reward, done, info
+
+    def onestep_lookahead(self, action: ActionPoint):
+        assert not action.is_empty, "Empty actions are not allowed here"
+
+        max_lin_vel = 2.
+        distance = action.s_lin
+        dt = 0.1
+        approx_timesteps_index = int((distance / max_lin_vel) // dt)
+
+        predictions = self._sim_wrap.ped_tracker.get_predictions()
+
+        obs = []
+        for v in predictions.values():
+            vel_estimation = np.stack((np.ediff1d(v[0][:, 0]), np.ediff1d(v[1][:, 1])), axis=1)
+            vel_estimation = np.concatenate((vel_estimation, vel_estimation[-1, np.newaxis]), axis=0)
+            vel_estimation = vel_estimation / dt
+            pose = v[0][approx_timesteps_index]
+            vel = vel_estimation[approx_timesteps_index]
+            obs.append(ObservableState(pose[0], pose[1], vel[0], vel[1], PEDESTRIAN_RADIUS))
+
+        if len(obs) < SocialNavEnv._PEDS_PADDING:
+            for _ in range(SocialNavEnv._PEDS_PADDING - len(obs)):
+                obs.append(ObservableState(-10., -10., 0., 0., 0.01))
+
+        return obs
 
     def render(self, mode: str = "human", output_file: Optional[str] = None):
         pass

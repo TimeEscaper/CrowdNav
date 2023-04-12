@@ -14,4 +14,5 @@ class SubgoalExpert(Policy):
         assert True
 
     def predict(self, state):
+        self.last_state = state
         return ActionPoint.create_empty()

@@ -56,7 +56,6 @@ class CompositeAgentsSampler(AbstractAgentsSampler):
     def sample(self) -> AgentsSample:
         idx = np.random.choice(self._indices, p=self._weights)
         sampler = self._samplers[idx]
-        print(idx)
         return sampler.sample()
 
 

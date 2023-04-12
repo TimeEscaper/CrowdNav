@@ -3,8 +3,10 @@ import torch.nn as nn
 import numpy as np
 import itertools
 import logging
+
+from crowd_sim.envs.pms.utils.math import subgoal_to_global
 from crowd_sim.envs.policy.policy import Policy
-from crowd_sim.envs.utils.action import ActionRot, ActionXY
+from crowd_sim.envs.utils.action import ActionRot, ActionXY, ActionPoint
 from crowd_sim.envs.utils.state import ObservableState, FullState
 
 
@@ -83,23 +85,35 @@ class CADRL(Policy):
         """
         Action space consists of 25 uniformly sampled actions in permitted range and 25 randomly sampled actions.
         """
-        holonomic = True if self.kinematics == 'holonomic' else False
-        speeds = [(np.exp((i + 1) / self.speed_samples) - 1) / (np.e - 1) * v_pref for i in range(self.speed_samples)]
-        if holonomic:
-            rotations = np.linspace(0, 2 * np.pi, self.rotation_samples, endpoint=False)
-        else:
-            rotations = np.linspace(-np.pi / 4, np.pi / 4, self.rotation_samples)
-
-        action_space = [ActionXY(0, 0) if holonomic else ActionRot(0, 0)]
-        for rotation, speed in itertools.product(rotations, speeds):
+        if self.kinematics != "subgoal":
+            holonomic = True if self.kinematics == 'holonomic' else False
+            speeds = [(np.exp((i + 1) / self.speed_samples) - 1) / (np.e - 1) * v_pref for i in range(self.speed_samples)]
             if holonomic:
-                action_space.append(ActionXY(speed * np.cos(rotation), speed * np.sin(rotation)))
+                rotations = np.linspace(0, 2 * np.pi, self.rotation_samples, endpoint=False)
             else:
-                action_space.append(ActionRot(speed, rotation))
+                rotations = np.linspace(-np.pi / 4, np.pi / 4, self.rotation_samples)
 
-        self.speeds = speeds
-        self.rotations = rotations
-        self.action_space = action_space
+            action_space = [ActionXY(0, 0) if holonomic else ActionRot(0, 0)]
+            for rotation, speed in itertools.product(rotations, speeds):
+                if holonomic:
+                    action_space.append(ActionXY(speed * np.cos(rotation), speed * np.sin(rotation)))
+                else:
+                    action_space.append(ActionRot(speed, rotation))
+
+            self.speeds = speeds
+            self.rotations = rotations
+            self.action_space = action_space
+
+        else:
+            action_space = [ActionPoint(s_lin=0., s_ang=0.)]
+            linears = np.linspace(1., 3., 5)
+            angulars = np.linspace(-np.deg2rad(110.), np.deg2rad(110.), 9)
+            for linear in linears:
+                for angular in angulars:
+                    action_space.append(ActionPoint(s_lin=linear, s_ang=angular))
+            self.action_space = action_space
+
+
 
     def propagate(self, state, action):
         if isinstance(state, ObservableState):
@@ -115,6 +129,17 @@ class CADRL(Policy):
                 next_py = state.py + action.vy * self.time_step
                 next_state = FullState(next_px, next_py, action.vx, action.vy, state.radius,
                                        state.gx, state.gy, state.v_pref, state.theta)
+            elif self.kinematics == "subgoal":
+                p_current = np.array([state.px, state.py, state.theta])
+                p_next = subgoal_to_global(np.array([action.s_lin, action.s_ang]), p_current)
+                next_px = p_next[0]
+                next_py = p_next[1]
+                next_theta = np.arctan2(p_next[1] - p_current[1], p_next[0] - p_current[0])
+                # TODO: Should velocities be zero?
+                next_vx = 2 * np.cos(next_theta)
+                next_vy = 2 * np.sin(next_theta)
+                next_state = FullState(next_px, next_py, next_vx, next_vy, state.radius, state.gx, state.gy,
+                                       state.v_pref, next_theta)
             else:
                 next_theta = state.theta + action.r
                 next_vx = action.v * np.cos(next_theta)

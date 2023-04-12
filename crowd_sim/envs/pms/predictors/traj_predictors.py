@@ -55,7 +55,7 @@ class CovarianceNetPredictor(AbstractTrajectoryPredictor):
                                     hidden_size=64,
                                     prediction_steps=CovarianceNetPredictor._MODEL_HORIZON)
         self._model.load_state_dict(
-            torch.load(pkg_resources.resource_filename("lib.predictors.covariance_net",
+            torch.load(pkg_resources.resource_filename("crowd_sim.envs.pms.predictors.covariance_net",
                                                        "weights/covariance_net_dt_01_horizon_25.pth"),
                        map_location=device))
         _ = self._model.to(device)
