@@ -309,7 +309,7 @@ class SocialNavEnv(gym.Env):
 
     _PEDS_PADDING = 8
 
-    def __init__(self, render: bool = False):
+    def __init__(self, render: bool = True):
 
         self._sim_wrap = PyMiniSimWrap(
             action_space_config=ContinuousPolarSubgoalActionSpace(
@@ -461,6 +461,7 @@ class SocialNavEnv(gym.Env):
 
     def onestep_lookahead(self, action: ActionPoint):
         assert not action.is_empty, "Empty actions are not allowed here"
+        robot_position = np.array([action.px, action.py])
 
         max_lin_vel = 2.
         distance = action.s_lin
@@ -469,20 +470,49 @@ class SocialNavEnv(gym.Env):
 
         predictions = self._sim_wrap.ped_tracker.get_predictions()
 
+        collision = False
+        min_ped_distance = np.inf
+
         obs = []
         for v in predictions.values():
-            vel_estimation = np.stack((np.ediff1d(v[0][:, 0]), np.ediff1d(v[1][:, 1])), axis=1)
+            vel_estimation = np.stack((np.ediff1d(v[0][:, 0]), np.ediff1d(v[0][:, 1])), axis=1)
             vel_estimation = np.concatenate((vel_estimation, vel_estimation[-1, np.newaxis]), axis=0)
             vel_estimation = vel_estimation / dt
-            pose = v[0][approx_timesteps_index]
             vel = vel_estimation[approx_timesteps_index]
+
+            pose = v[0][approx_timesteps_index]
+            dist = np.linalg.norm(pose - robot_position) - PEDESTRIAN_RADIUS - ROBOT_RADIUS
+            if dist <= 0:
+                collision = True
+            if dist < min_ped_distance:
+                min_ped_distance = dist
+
             obs.append(ObservableState(pose[0], pose[1], vel[0], vel[1], PEDESTRIAN_RADIUS))
 
         if len(obs) < SocialNavEnv._PEDS_PADDING:
             for _ in range(SocialNavEnv._PEDS_PADDING - len(obs)):
                 obs.append(ObservableState(-10., -10., 0., 0., 0.01))
 
-        return obs
+        goal_reached = np.linalg.norm(robot_position - self._sim_wrap.goal) < ROBOT_RADIUS
+
+        if collision:
+            reward = self.collision_penalty
+            done = True
+            info = Collision()
+        elif goal_reached:
+            reward = self.success_reward
+            done = True
+            info = ReachGoal()
+        elif min_ped_distance < self.discomfort_dist:
+            reward = (min_ped_distance - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
+            done = False
+            info = Danger(min_ped_distance)
+        else:
+            reward = 0.
+            done = False
+            info = Nothing()
+
+        return obs, reward, done, info
 
     def render(self, mode: str = "human", output_file: Optional[str] = None):
         pass

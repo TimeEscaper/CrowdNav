@@ -42,7 +42,17 @@ class MultiHumanRL(CADRL):
             for action in self.action_space:
                 next_self_state = self.propagate(state.self_state, action)
                 if self.query_env:
-                    next_human_states, reward, done, info = self.env.onestep_lookahead(action)
+                    if self.kinematics == "subgoal":
+                        proxy_action = ActionPoint(s_lin=action.s_lin,
+                                                   s_ang=action.s_ang,
+                                                   px=next_self_state.px,
+                                                   py=next_self_state.py,
+                                                   theta=next_self_state.theta,
+                                                   vx=next_self_state.vx,
+                                                   vy=next_self_state.vy)
+                    else:
+                        proxy_action = action
+                    next_human_states, reward, done, info = self.env.onestep_lookahead(proxy_action)
                 else:
                     next_human_states = [self.propagate(human_state, ActionXY(human_state.vx, human_state.vy))
                                        for human_state in state.human_states]
