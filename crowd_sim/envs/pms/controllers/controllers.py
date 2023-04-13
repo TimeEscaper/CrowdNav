@@ -261,7 +261,7 @@ class DefaultMPCFactory(AbstractControllerFactory):
                  dt: float = 0.1,
                  Q: float = 100.,
                  R: np.ndarray = np.diag([1., 1.]),
-                 W: float = 500,
+                 W: float = 1000.,
                  dummy_ped: Tuple[float, float] = (10000., 10000.),
                  solver: str = "MUMPS"):
         super(DefaultMPCFactory, self).__init__()
@@ -291,5 +291,5 @@ class DefaultMPCFactory(AbstractControllerFactory):
             dummy_ped=self._dummy_ped,
             solver=self._solver,
             cost_type="mahalanobis",
-            constraint=("euclidean", 0.5)
+            constraint=("euclidean", 0.3)
         )

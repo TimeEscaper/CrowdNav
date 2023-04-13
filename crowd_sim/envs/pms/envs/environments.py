@@ -459,7 +459,7 @@ class SocialNavEnv(gym.Env):
 
         return obs, reward, done, info
 
-    def onestep_lookahead(self, action: ActionPoint):
+    def onestep_lookahead(self, action: ActionPoint, n_samples: Optional[int] = None):
         assert not action.is_empty, "Empty actions are not allowed here"
         robot_position = np.array([action.px, action.py])
 
@@ -470,49 +470,79 @@ class SocialNavEnv(gym.Env):
 
         predictions = self._sim_wrap.ped_tracker.get_predictions()
 
-        collision = False
-        min_ped_distance = np.inf
-
-        obs = []
+        predicted_positions = np.stack([v[0][approx_timesteps_index] for v in predictions.values()], axis=0)
+        predicted_covariances = np.stack([v[1][approx_timesteps_index] for v in predictions.values()], axis=0)
+        vel_estimations = []
         for v in predictions.values():
             vel_estimation = np.stack((np.ediff1d(v[0][:, 0]), np.ediff1d(v[0][:, 1])), axis=1)
             vel_estimation = np.concatenate((vel_estimation, vel_estimation[-1, np.newaxis]), axis=0)
             vel_estimation = vel_estimation / dt
-            vel = vel_estimation[approx_timesteps_index]
+            vel_estimation = vel_estimation[approx_timesteps_index]
+            vel_estimations.append(vel_estimation)
+        vel_estimations = np.stack(vel_estimations, axis=0)
 
-            pose = v[0][approx_timesteps_index]
-            dist = np.linalg.norm(pose - robot_position) - PEDESTRIAN_RADIUS - ROBOT_RADIUS
-            if dist <= 0:
-                collision = True
-            if dist < min_ped_distance:
-                min_ped_distance = dist
+        result = []
 
-            obs.append(ObservableState(pose[0], pose[1], vel[0], vel[1], PEDESTRIAN_RADIUS))
+        return_list = n_samples is not None
 
-        if len(obs) < SocialNavEnv._PEDS_PADDING:
-            for _ in range(SocialNavEnv._PEDS_PADDING - len(obs)):
-                obs.append(ObservableState(-10., -10., 0., 0., 0.01))
+        for i in range(n_samples or 1):
+            collision = False
+            min_ped_distance = np.inf
 
-        goal_reached = np.linalg.norm(robot_position - self._sim_wrap.goal) < ROBOT_RADIUS
+            obs = []
+            for j in range(predicted_positions.shape[0]):
+                # vel_estimation = np.stack((np.ediff1d(v[0][:, 0]), np.ediff1d(v[0][:, 1])), axis=1)
+                # vel_estimation = np.concatenate((vel_estimation, vel_estimation[-1, np.newaxis]), axis=0)
+                # vel_estimation = vel_estimation / dt
+                # vel = vel_estimation[approx_timesteps_index]
+                #
+                # pose = v[0][approx_timesteps_index]
+                # dist = np.linalg.norm(pose - robot_position) - PEDESTRIAN_RADIUS - ROBOT_RADIUS
+                # if dist <= 0:
+                #     collision = True
+                # if dist < min_ped_distance:
+                #     min_ped_distance = dist
+                vel = vel_estimations[j]
+                if n_samples is not None:
+                    pose = np.random.multivariate_normal(predicted_positions[j], predicted_covariances[j])
+                else:
+                    pose = predicted_positions[j]
+                dist = np.linalg.norm(pose - robot_position) - PEDESTRIAN_RADIUS - ROBOT_RADIUS
+                if dist <= 0:
+                    collision = True
+                if dist < min_ped_distance:
+                    min_ped_distance = dist
 
-        if collision:
-            reward = self.collision_penalty
-            done = True
-            info = Collision()
-        elif goal_reached:
-            reward = self.success_reward
-            done = True
-            info = ReachGoal()
-        elif min_ped_distance < self.discomfort_dist:
-            reward = (min_ped_distance - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
-            done = False
-            info = Danger(min_ped_distance)
-        else:
-            reward = 0.
-            done = False
-            info = Nothing()
+                obs.append(ObservableState(pose[0], pose[1], vel[0], vel[1], PEDESTRIAN_RADIUS))
 
-        return obs, reward, done, info
+            if len(obs) < SocialNavEnv._PEDS_PADDING:
+                for _ in range(SocialNavEnv._PEDS_PADDING - len(obs)):
+                    obs.append(ObservableState(-10., -10., 0., 0., 0.01))
+
+            goal_reached = np.linalg.norm(robot_position - self._sim_wrap.goal) < ROBOT_RADIUS
+
+            if collision:
+                reward = self.collision_penalty
+                done = True
+                info = Collision()
+            elif goal_reached:
+                reward = self.success_reward
+                done = True
+                info = ReachGoal()
+            elif min_ped_distance < self.discomfort_dist:
+                reward = (min_ped_distance - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
+                done = False
+                info = Danger(min_ped_distance)
+            else:
+                reward = 0.
+                done = False
+                info = Nothing()
+
+            result.append((obs, reward, done, info))
+
+        if return_list:
+            return result
+        return result[0]
 
     def render(self, mode: str = "human", output_file: Optional[str] = None):
         pass
