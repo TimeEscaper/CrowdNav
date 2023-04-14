@@ -26,6 +26,8 @@ class ValueNetwork(nn.Module):
         self.attention_weights = None
 
         self.empty_peds_stub = nn.Parameter(torch.zeros(mlp2_dims[1])) if empty_peds_stub else None
+        self.mlp1_dim = mlp1_dims[1]
+        self.mlp2_dim = mlp2_dims[1]
 
     def forward(self, state):
         """
@@ -38,17 +40,24 @@ class ValueNetwork(nn.Module):
 
         # TODO: May not work with proper vectorization
         has_peds = True
-        if self.empty_peds_stub is not None:
-            state = state[state[:, :, -3] > 0.]
-            if len(state) == 0:
-                has_peds = False
-            else:
-                state = state.unsqueeze(0)
+        # if self.empty_peds_stub is not None:
+        #     state = state[state[:, :, -3] > 0.]
+        #     if len(state) == 0:
+        #         has_peds = False
+        #     else:
+        #         state = state.unsqueeze(0)
+
+        visibility_mask = state[:, :, -3] > 0
+        visibility_mask_flatten_1 = torch.tile(visibility_mask.reshape(-1).unsqueeze(1), (1, self.mlp1_dim))
+        visibility_mask_flatten_2 = torch.tile(visibility_mask.reshape(-1).unsqueeze(1), (1, self.mlp2_dim))
 
         if has_peds:
             size = state.shape
             mlp1_output = self.mlp1(state.view((-1, size[2])))
             mlp2_output = self.mlp2(mlp1_output)
+
+            mlp1_output = mlp1_output * visibility_mask_flatten_1
+            mlp2_output = mlp2_output * visibility_mask_flatten_2
 
             if self.with_global_state:
                 # compute attention scores
