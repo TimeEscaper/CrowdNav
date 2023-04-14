@@ -468,7 +468,20 @@ class SocialNavEnv(gym.Env):
         dt = 0.1
         approx_timesteps_index = int((distance / max_lin_vel) // dt)
 
+        goal_reached = np.linalg.norm(robot_position - self._sim_wrap.goal) < ROBOT_RADIUS
+
         predictions = self._sim_wrap.ped_tracker.get_predictions()
+        if len(predictions) == 0:
+            obs = [ObservableState(-10., -10., 0., 0., 0.) for _ in range(SocialNavEnv._PEDS_PADDING)]
+            if goal_reached:
+                reward = self.success_reward
+                done = True
+                info = ReachGoal()
+            else:
+                reward = 0.
+                done = False
+                info = Nothing()
+            return obs, reward, done, info
 
         predicted_positions = np.stack([v[0][approx_timesteps_index] for v in predictions.values()], axis=0)
         predicted_covariances = np.stack([v[1][approx_timesteps_index] for v in predictions.values()], axis=0)
@@ -517,9 +530,7 @@ class SocialNavEnv(gym.Env):
 
             if len(obs) < SocialNavEnv._PEDS_PADDING:
                 for _ in range(SocialNavEnv._PEDS_PADDING - len(obs)):
-                    obs.append(ObservableState(-10., -10., 0., 0., 0.01))
-
-            goal_reached = np.linalg.norm(robot_position - self._sim_wrap.goal) < ROBOT_RADIUS
+                    obs.append(ObservableState(-10., -10., 0., 0., 0.))
 
             if collision:
                 reward = self.collision_penalty
@@ -552,9 +563,11 @@ class SocialNavEnv(gym.Env):
         current_poses = self._sim_wrap.ped_tracker.get_current_poses(return_velocities=True)
         for v in current_poses.values():
             obs.append(ObservableState(v[0], v[1], v[2], v[3], PEDESTRIAN_RADIUS))
+
         if len(obs) < SocialNavEnv._PEDS_PADDING:
             for _ in range(SocialNavEnv._PEDS_PADDING - len(obs)):
-                obs.append(ObservableState(-10., -10., 0., 0., 0.01))
+                obs.append(ObservableState(-10., -10., 0., 0., 0.))
+
         return obs
 
 

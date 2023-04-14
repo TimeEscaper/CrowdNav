@@ -8,7 +8,7 @@ from crowd_nav.policy.multi_human_rl import MultiHumanRL
 
 class ValueNetwork(nn.Module):
     def __init__(self, input_dim, self_state_dim, mlp1_dims, mlp2_dims, mlp3_dims, attention_dims, with_global_state,
-                 cell_size, cell_num):
+                 cell_size, cell_num, empty_peds_stub: bool):
         super().__init__()
         self.self_state_dim = self_state_dim
         self.global_state_dim = mlp1_dims[-1]
@@ -25,6 +25,8 @@ class ValueNetwork(nn.Module):
         self.mlp3 = mlp(mlp3_input_dim, mlp3_dims)
         self.attention_weights = None
 
+        self.empty_peds_stub = nn.Parameter(torch.zeros(mlp2_dims[1])) if empty_peds_stub else None
+
     def forward(self, state):
         """
         First transform the world coordinates to self-centric coordinates and then do forward computation
@@ -32,32 +34,45 @@ class ValueNetwork(nn.Module):
         :param state: tensor of shape (batch_size, # of humans, length of a rotated state)
         :return:
         """
-        size = state.shape
         self_state = state[:, 0, :self.self_state_dim]
-        mlp1_output = self.mlp1(state.view((-1, size[2])))
-        mlp2_output = self.mlp2(mlp1_output)
 
-        if self.with_global_state:
-            # compute attention scores
-            global_state = torch.mean(mlp1_output.view(size[0], size[1], -1), 1, keepdim=True)
-            global_state = global_state.expand((size[0], size[1], self.global_state_dim)).\
-                contiguous().view(-1, self.global_state_dim)
-            attention_input = torch.cat([mlp1_output, global_state], dim=1)
+        # TODO: May not work with proper vectorization
+        has_peds = True
+        if self.empty_peds_stub is not None:
+            state = state[state[:, :, -3] > 0.]
+            if len(state) == 0:
+                has_peds = False
+            else:
+                state = state.unsqueeze(0)
+
+        if not has_peds:
+            size = state.shape
+            mlp1_output = self.mlp1(state.view((-1, size[2])))
+            mlp2_output = self.mlp2(mlp1_output)
+
+            if self.with_global_state:
+                # compute attention scores
+                global_state = torch.mean(mlp1_output.view(size[0], size[1], -1), 1, keepdim=True)
+                global_state = global_state.expand((size[0], size[1], self.global_state_dim)).\
+                    contiguous().view(-1, self.global_state_dim)
+                attention_input = torch.cat([mlp1_output, global_state], dim=1)
+            else:
+                attention_input = mlp1_output
+            scores = self.attention(attention_input).view(size[0], size[1], 1).squeeze(dim=2)
+
+            # masked softmax
+            # weights = softmax(scores, dim=1).unsqueeze(2)
+            scores_exp = torch.exp(scores) * (scores != 0).float()
+            weights = (scores_exp / torch.sum(scores_exp, dim=1, keepdim=True)).unsqueeze(2)
+            self.attention_weights = weights[0, :, 0].data.cpu().numpy()
+
+            # output feature is a linear combination of input features
+            features = mlp2_output.view(size[0], size[1], -1)
+            # for converting to onnx
+            # expanded_weights = torch.cat([torch.zeros(weights.size()).copy_(weights) for _ in range(50)], dim=2)
+            weighted_feature = torch.sum(torch.mul(weights, features), dim=1)
         else:
-            attention_input = mlp1_output
-        scores = self.attention(attention_input).view(size[0], size[1], 1).squeeze(dim=2)
-
-        # masked softmax
-        # weights = softmax(scores, dim=1).unsqueeze(2)
-        scores_exp = torch.exp(scores) * (scores != 0).float()
-        weights = (scores_exp / torch.sum(scores_exp, dim=1, keepdim=True)).unsqueeze(2)
-        self.attention_weights = weights[0, :, 0].data.cpu().numpy()
-
-        # output feature is a linear combination of input features
-        features = mlp2_output.view(size[0], size[1], -1)
-        # for converting to onnx
-        # expanded_weights = torch.cat([torch.zeros(weights.size()).copy_(weights) for _ in range(50)], dim=2)
-        weighted_feature = torch.sum(torch.mul(weights, features), dim=1)
+            weighted_feature = torch.tile(self.empty_peds_stub, (self_state.shape[0], 1))
 
         # concatenate agent's state with global weighted humans' state
         joint_state = torch.cat([self_state, weighted_feature], dim=1)
@@ -78,8 +93,10 @@ class SARL(MultiHumanRL):
         attention_dims = [int(x) for x in config.get('sarl', 'attention_dims').split(', ')]
         self.with_om = config.getboolean('sarl', 'with_om')
         with_global_state = config.getboolean('sarl', 'with_global_state')
+        empty_peds_stub = config.getboolean('sarl', 'empty_peds_stub')
         self.model = ValueNetwork(self.input_dim(), self.self_state_dim, mlp1_dims, mlp2_dims, mlp3_dims,
-                                  attention_dims, with_global_state, self.cell_size, self.cell_num)
+                                  attention_dims, with_global_state, self.cell_size, self.cell_num,
+                                  empty_peds_stub)
         self.multiagent_training = config.getboolean('sarl', 'multiagent_training')
         if self.with_om:
             self.name = 'OM-SARL'
