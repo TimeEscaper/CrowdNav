@@ -45,7 +45,7 @@ class ValueNetwork(nn.Module):
             else:
                 state = state.unsqueeze(0)
 
-        if not has_peds:
+        if has_peds:
             size = state.shape
             mlp1_output = self.mlp1(state.view((-1, size[2])))
             mlp2_output = self.mlp2(mlp1_output)
