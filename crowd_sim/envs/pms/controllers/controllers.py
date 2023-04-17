@@ -84,6 +84,8 @@ class DoMPCController(AbstractController):
         self._inverse_covariances_peds = self._model.set_variable("_tvp", "inv_cov_peds", shape=(4, total_peds))
         # Goal
         current_goal = self._model.set_variable("_tvp", "current_goal", shape=3)
+        # Current adjustable margin for constraints
+        current_margin = self._model.set_variable("_tvp", "current_margin", shape=1)
         # Initial position on the prediction step
         p_rob_0 = self._model.set_variable("_tvp", "p_rob_0", shape=3)
 
@@ -152,7 +154,8 @@ class DoMPCController(AbstractController):
                 lb_dists_square = np.array([(r_robot + r_ped + constraint_value) ** 2 for _ in range(total_peds)])
                 dx_dy_square = (p_robot_hcat - p_peds) ** 2
                 pedestrians_distances_squared = dx_dy_square[0, :] + dx_dy_square[1, :]
-                self._mpc.set_nl_cons("euclidean_dist_to_peds", -pedestrians_distances_squared,
+                final_constraint = pedestrians_distances_squared + current_margin ** 2
+                self._mpc.set_nl_cons("euclidean_dist_to_peds", -final_constraint,
                                       ub=-lb_dists_square)
 
             elif constraint_type == "mahalanobis":
@@ -204,6 +207,9 @@ class DoMPCController(AbstractController):
             np.arctan2(goal[1] - state[1], goal[0] - state[0])
         ])
         self._mpc_tvp_fun['_tvp', :, 'current_goal'] = self._goal
+
+    def set_margin(self, margin: float):
+        self._mpc_tvp_fun['_tvp', :, 'current_margin'] = margin
 
     @property
     def goal(self) -> Optional[np.ndarray]:

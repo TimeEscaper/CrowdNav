@@ -124,10 +124,12 @@ class PyMiniSimWrap:
 
     def _step_subgoal(self, action: np.ndarray) -> Tuple[bool, bool, bool, float]:
         if action is not None:
-            subgoal = self._subgoal_to_absolute(action)
+            margin = action[-1]
+            subgoal = self._subgoal_to_absolute(action[:2])
             max_subgoal_steps = self._max_subgoal_steps
         else:
             # Controller as expert, set goal as subgoal and randomly truncate the subgoal steps
+            margin = 0.
             subgoal = self._robot_goal.copy()
             choice = np.random.choice([False, True], p=[0.4, 0.6])
             if choice:
@@ -136,6 +138,7 @@ class PyMiniSimWrap:
                 max_subgoal_steps = np.random.randint(8, self._max_subgoal_steps)
         robot_state = self._sim.current_state.world.robot.pose
         self._controller.set_goal(state=robot_state, goal=subgoal)
+        self._controller.set_margin(margin)
 
         if self._renderer is not None:
             self._renderer.draw(f"subgoal", CircleDrawing(subgoal, 0.05, (0, 0, 255)))
@@ -360,7 +363,7 @@ class SocialNavEnv(gym.Env):
             ped_tracker=CovarianceNetTrackerFactory(
                 horizon=25,
                 max_ghost_tracking_time=8,
-                device="cuda"
+                device="cpu"
             )(),
 
             controller=DefaultMPCFactory(
@@ -415,7 +418,7 @@ class SocialNavEnv(gym.Env):
         return self._get_observation()
 
     def step(self, action: ActionPoint, update=True):
-        action = np.array([action.s_lin, action.s_ang]) if not action.is_empty else None
+        action = np.array([action.s_lin, action.s_ang, action.margin]) if not action.is_empty else None
         prev_pose = self._sim_wrap.sim_state.world.robot.pose
         collision, truncated, success, separation = self._sim_wrap.step(action)
 

@@ -10,6 +10,7 @@ class ActionPoint:
     def __init__(self,
                  s_lin: Optional[float] = None,
                  s_ang: Optional[float] = None,
+                 margin: Optional[float] = None,
                  px: Optional[float] = None,
                  py: Optional[float] = None,
                  theta: Optional[float] = None,
@@ -19,6 +20,7 @@ class ActionPoint:
                  is_empty: bool = False):
         self._s_lin = s_lin
         self._s_ang = s_ang
+        self._margin = margin
         self._px = px
         self._py = py
         self._theta = theta
@@ -34,6 +36,10 @@ class ActionPoint:
     @property
     def s_ang(self) -> float:
         return self._s_ang
+
+    @property
+    def margin(self) -> float:
+        return self._margin
 
     @property
     def px(self) -> Optional[float]:
@@ -68,6 +74,7 @@ class ActionPoint:
         return ActionPoint(
             s_lin=None,
             s_ang=None,
+            margin=None,
             px=None,
             py=None,
             theta=None,

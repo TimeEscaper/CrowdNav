@@ -110,12 +110,14 @@ class CADRL(Policy):
             self.action_space = action_space
 
         else:
-            action_space = [ActionPoint(s_lin=0., s_ang=0.)]
+            action_space = [ActionPoint(s_lin=0., s_ang=0., margin=0.)]
             linears = np.linspace(1., 3., 5)
             angulars = np.linspace(-np.deg2rad(110.), np.deg2rad(110.), 9)
+            margins = [0., 0.15, 0.3, 0.4]
             for linear in linears:
                 for angular in angulars:
-                    action_space.append(ActionPoint(s_lin=linear, s_ang=angular))
+                    for margin in margins:
+                        action_space.append(ActionPoint(s_lin=linear, s_ang=angular, margin=margin))
             self.action_space = action_space
 
 
